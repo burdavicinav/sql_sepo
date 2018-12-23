@@ -1,0 +1,1 @@
+CREATE OR REPLACE TYPE tp_sepo_attribute_list IS TABLE OF tp_sepo_attribute;

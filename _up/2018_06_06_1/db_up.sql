@@ -1,0 +1,1 @@
+ALTER TABLE sepo_import_log ADD msg_type VARCHAR2(10) DEFAULT 'INFO';

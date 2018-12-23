@@ -1,0 +1,37 @@
+CREATE OR REPLACE PACKAGE pkg_sepo_materials
+AS
+  FUNCTION CheckUniqueCode(p_plCode VARCHAR2) RETURN BOOLEAN;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_sepo_materials
+AS
+  FUNCTION CheckUniqueCode(p_plCode VARCHAR2) RETURN BOOLEAN
+  IS
+    l_exists NUMBER;
+  BEGIN
+    SELECT
+      Count(*)
+    INTO
+      l_exists
+    FROM
+      (
+      SELECT
+        plCode
+      FROM
+        materials
+      UNION ALL
+      SELECT
+        sign
+      FROM
+        stock_other
+      )
+    WHERE
+        plCode = p_plCode;
+
+    RETURN NOT (l_exists > 1);
+
+  END;
+
+END;
+/

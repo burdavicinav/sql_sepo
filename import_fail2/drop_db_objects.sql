@@ -1,0 +1,10 @@
+DROP PACKAGE pkg_sepo_import_fail2;
+DROP VIEW view_sepo_fail2_import;
+DROP VIEW view_sepo_fail2_data;
+DROP TABLE sepo_cex_to_district;
+DROP TABLE sepo_import_fail2_log;
+DROP TABLE sepo_fail2_routes;
+DROP SEQUENCE sq_sepo_fail2_routes;
+DROP TABLE sepo_fail2;
+DROP SEQUENCE sq_sepo_fail2;
+DROP VIEW view_sepo_union_attrs_dce;

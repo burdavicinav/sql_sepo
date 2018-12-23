@@ -1,0 +1,149 @@
+CREATE OR REPLACE TRIGGER tia_sepo_export_kompl_std
+AFTER INSERT ON businessobj_promotion
+FOR EACH ROW
+DECLARE
+  l_boType NUMBER;
+  l_revision NUMBER;
+  l_prev_state businessObj_states.name%TYPE;
+  l_current_state businessObj_states.name%TYPE;
+  l_modify_user NUMBER;
+
+  l_status NUMBER;
+  l_priznak NUMBER;
+BEGIN
+  SELECT TYPE, revision INTO l_boType, l_revision FROM business_objects
+  WHERE
+      code = :new.businessObj;
+
+  SELECT
+    lv.name
+  INTO
+    l_current_state
+  FROM
+    businessObj_states st,
+    businessobj_promotion_levels lv
+  WHERE
+      st.code = :new.current_state
+    AND
+      lv.code = st.promLevel;
+
+  IF :new.prev_state IS NOT NULL THEN
+    SELECT
+      lv.name
+    INTO
+      l_prev_state
+    FROM
+      businessObj_states st,
+      businessobj_promotion_levels lv
+    WHERE
+        st.code = :new.prev_state
+      AND
+        lv.code = st.promLevel;
+
+  END IF;
+
+  IF l_boType = 4 AND
+       l_prev_state = 'Проектирование' AND l_current_state = 'Производство' THEN
+    l_status := 0;
+    l_priznak := NULL;
+
+    SELECT
+      code
+    INTO
+      l_modify_user
+    FROM
+      user_list
+    WHERE
+        loginName = USER;
+
+    pkg_sepo_export_kompl.Clear();
+
+    IF l_revision = 0 THEN l_priznak := 0; ELSE l_priznak := 1; END IF;
+    pkg_sepo_export_kompl.SelectRow(
+      :new.businessObj,
+      SYSDATE,
+      l_modify_user,
+      l_status,
+      l_priznak
+      );
+
+    pkg_sepo_export_kompl.Export();
+
+  ELSIF l_boType = 3 AND
+          l_prev_state = 'Проектирование' AND l_current_state = 'Производство' THEN
+    l_status := 0;
+    l_priznak := NULL;
+
+    SELECT
+      code
+    INTO
+      l_modify_user
+    FROM
+      user_list
+    WHERE
+        loginName = USER;
+
+    pkg_sepo_export_dce.Clear();
+    pkg_sepo_export_dce.pkg_dce_type := 3;
+
+    IF l_revision = 0 THEN l_priznak := 0; ELSE l_priznak := 1; END IF;
+    pkg_sepo_export_dce.SelectRow(
+      :new.businessObj,
+      SYSDATE,
+      l_modify_user,
+      l_status,
+      l_priznak
+      );
+
+    pkg_sepo_export_dce.Export();
+
+  ELSIF l_boType = 50 AND
+          l_prev_state = 'Проектирование' AND l_current_state = 'Производство' THEN
+
+    l_status := 0;
+
+    pkg_sepo_export_dce.Clear();
+    pkg_sepo_export_dce.pkg_dce_type := -1;
+
+    FOR i IN (
+      SELECT
+        ii.todo,
+        bo.code
+      FROM
+        ii_items ii,
+        business_objects bo
+      WHERE
+          ii.iiCode = :new.businessObj
+        AND
+          bo.code = ii.itemCode
+        AND
+          bo.TYPE IN (1, 2, 5, 22)
+    ) LOOP
+      l_priznak := i.todo;
+
+      SELECT
+        code
+      INTO
+        l_modify_user
+      FROM
+        user_list
+      WHERE
+          loginName = USER;
+
+      pkg_sepo_export_dce.SelectRow(
+        i.code,
+        SYSDATE,
+        l_modify_user,
+        l_status,
+        l_priznak
+        );
+
+    END LOOP;
+
+    pkg_sepo_export_dce.Export();
+
+
+  END IF;
+
+END;
+/

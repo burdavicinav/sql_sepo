@@ -1,0 +1,506 @@
+CREATE OR REPLACE PACKAGE pkg_sepo_export_dce
+IS
+  pkg_dir CONSTANT VARCHAR2(100) := 'DBF_DIR';
+  pkg_dce_type NUMBER;
+
+  PROCEDURE Clear;
+  -- экспорт
+  -- p_dir: директори€
+  -- p_file: им€ файла
+  PROCEDURE Export;
+
+  PROCEDURE SelectRow(
+    p_bocode NUMBER,
+    p_modify_date DATE,
+    p_modify_user NUMBER,
+    p_status NUMBER,
+    p_priznak NUMBER
+  );
+
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_sepo_export_dce
+IS
+  TYPE DictAttrs IS TABLE OF NUMBER INDEX BY obj_attributes.name%TYPE;
+  pkg_attrs DictAttrs;
+
+  PROCEDURE Clear
+  IS
+
+  BEGIN
+    pkg_dce_type := NULL;
+    DELETE FROM sepo_export_dce;
+  END;
+
+  -- переводит данные в BLOB дл€ последующей загрузки в файл
+  PROCEDURE BuildData(p_number_str NUMBER := 0)
+  IS
+    l_sysDate DATE DEFAULT SYSDATE;
+    l_time VARCHAR2(8);
+
+    k NUMBER;
+  BEGIN
+    l_time := To_Char(SYSDATE, 'HH24:MI:SS');
+
+    exportToDBF.DataBeginWrite();
+    k := p_number_str;
+    FOR i IN (SELECT data.* FROM sepo_export_dce data) LOOP
+      k := k + 1;
+
+      exportToDBF.NewRecord();
+      exportToDBF.AddField(i.TPDCE, 2);
+      exportToDBF.AddField(i.IZD, 7);
+      exportToDBF.AddField(i.NAIMD, 150);
+      exportToDBF.AddField(i.DCE, 18);
+      exportToDBF.AddField(i.DATV);
+      exportToDBF.AddField(i.CHNDN, 35);
+      exportToDBF.AddField(i.OKON, 10);
+      exportToDBF.AddField(i.DOP, 255);
+      exportToDBF.AddField(i.NIZM, 10);
+      exportToDBF.AddField(i.PVH, 50);
+      exportToDBF.AddField(i.DATAK);
+      exportToDBF.AddField(i.TABV, 7);
+      exportToDBF.AddField(i.TABK, 7);
+      exportToDBF.AddField(l_sysdate);
+      exportToDBF.AddField(l_time, 8);
+      exportToDBF.AddField(k, 6);
+      exportToDBF.AddField(i.PRIZN, 1);
+
+    END LOOP;
+
+    exportToDBF.DataEndWrite();
+
+  END;
+
+  -- экспорт
+  PROCEDURE Export
+  IS
+    l_file VARCHAR2(50);
+    l_isExists BOOLEAN;
+    l_file_length NUMBER;
+    l_block_size BINARY_INTEGER;
+  BEGIN
+    -- назначение имени файла
+    IF pkg_dce_type = 3 THEN
+      l_file := 'kr' || To_Char(SYSDATE, 'YYMMDD') || '.dbf';
+    ELSE
+      l_file := 'd' || To_Char(SYSDATE, 'YYMMDD') || '.dbf';
+    END IF;
+
+    -- проверка на существование файла
+    Utl_File.FGetAttr(
+      pkg_dir,
+      l_file,
+      l_isExists,
+      l_file_length,
+      l_block_size
+      );
+
+    -- инициализаци€
+    exportToDBF.InizializeDBF(
+      p_dir => pkg_dir,
+      p_file => l_file,
+      p_str_mode => exportToDBF.STR_MODE_UPPER
+      );
+
+    -- если необходимо создать новый файл, то...
+    IF NOT l_isExists THEN
+      -- задание полей
+      exportToDBF.InizializeColumns();
+      exportToDBF.AddColumn('TPDCE', 'N', 2, 0);
+      exportToDBF.AddColumn('IZD', 'N', 7, 0);
+      exportToDBF.AddColumn('NAIMD', 'C', 150, 0);
+      exportToDBF.AddColumn('DCE', 'C', 18, 0);
+      exportToDBF.AddColumn('DATV', 'D', 8, 0);
+      exportToDBF.AddColumn('CHNDN', 'C', 35, 0);
+      exportToDBF.AddColumn('OKON', 'C', 10, 0);
+      exportToDBF.AddColumn('DOP', 'C', 255, 0);
+      exportToDBF.AddColumn('NIZM', 'C', 10, 0);
+      exportToDBF.AddColumn('PVH', 'C', 50, 0);
+      exportToDBF.AddColumn('DATAK', 'D', 8, 0);
+      exportToDBF.AddColumn('TABV', 'N', 7, 0);
+      exportToDBF.AddColumn('TABK', 'N', 7, 0);
+      exportToDBF.AddColumn('DVIGR', 'D', 8, 0);
+      exportToDBF.AddColumn('TVIGR', 'C', 8, 0);
+      exportToDBF.AddColumn('NOMSTR', 'N', 6, 0);
+      exportToDBF.AddColumn('PRIZN', 'N', 1, 0);
+
+      BuildData();
+      -- экспорт
+      exportToDBF.Export();
+
+    ELSE
+      BuildData(exportToDBF.CountRecords());
+
+      -- иначе, данные добавл€ютс€ в конец файла
+      exportToDBF.AppendData;
+
+    END IF;
+
+  END;
+
+  PROCEDURE GetAttrs(p_boType NUMBER)
+  IS
+
+  BEGIN
+    pkg_attrs.DELETE();
+
+    FOR i IN (
+      SELECT
+        code,
+        shortName
+      FROM
+        obj_attributes
+      WHERE
+          objType = p_boType
+
+    ) LOOP
+      pkg_attrs(i.shortName) := i.code;
+
+    END LOOP;
+
+  END;
+
+  FUNCTION GetAttrCode(p_name obj_attributes.shortName%type)
+  RETURN NUMBER
+  IS
+
+  BEGIN
+    RETURN pkg_attrs(p_name);
+  EXCEPTION
+    WHEN No_Data_Found THEN
+      Raise_Application_Error(-20101, 'јтрибут ' || p_name || ' не найден');
+
+  END;
+
+  PROCEDURE SelectRow(
+    p_boCode NUMBER,
+    p_modify_date DATE,
+    p_modify_user NUMBER,
+    p_status NUMBER,
+    p_priznak NUMBER
+  )
+  IS
+    l_count NUMBER;
+    l_isExists BOOLEAN;
+    l_currentRevision business_objects%ROWTYPE;
+    l_startRevision business_objects%ROWTYPE;
+    l_koRow konstrobj%ROWTYPE;
+
+    l_file_length NUMBER;
+    l_block_size BINARY_INTEGER;
+
+    l_query VARCHAR2(1000);
+    l_rec sepo_export_dce%ROWTYPE;
+
+    l_fileName VARCHAR2(100);
+  BEGIN
+    -- запись дл€ заполнени€ данных
+    l_rec := NULL;
+
+    l_rec.STATUS := p_status;
+    l_rec.PRIZN := p_priznak;
+
+    -- данные текущей ревизии
+    SELECT
+      *
+    INTO
+      l_currentRevision
+    FROM
+      business_objects bo
+    WHERE
+        bo.code = p_boCode;
+
+    -- стартова€ ревизи€
+    SELECT
+      *
+    INTO
+      l_startRevision
+    FROM
+      business_objects bo
+    WHERE
+        bo.prodCode = l_currentRevision.prodCode
+      AND
+        bo.revision = (
+          SELECT
+            Min(bo_.revision)
+          FROM
+            business_objects bo_
+          WHERE
+              bo_.prodCode = bo.prodCode
+              );
+
+    -- даты
+    l_rec.DATV := l_startRevision.create_date;
+    IF p_priznak > 0 THEN
+      l_rec.DATAK := p_modify_date;
+    END IF;
+
+    -- табельные номера
+    l_rec.TABV := NULL;
+
+    SELECT
+      Count(*)
+    INTO
+      l_count
+    FROM
+      user_list ul,
+      labouring_list l
+    WHERE
+        ul.code = l_startRevision.create_user
+      AND
+        l.code = ul.labouring;
+
+    IF l_count > 0 THEN
+      SELECT
+        l.id
+      INTO
+        l_rec.TABV
+      FROM
+        user_list ul,
+        labouring_list l
+      WHERE
+          ul.code = l_startRevision.create_user
+        AND
+          l.code = ul.labouring;
+
+    END IF;
+
+    -- табельные номера
+    l_rec.TABK := NULL;
+
+    IF p_priznak > 0 THEN
+      SELECT
+        Count(*)
+      INTO
+        l_count
+      FROM
+        user_list ul,
+        labouring_list l
+      WHERE
+          ul.code = p_modify_user
+        AND
+          l.code = ul.labouring;
+
+      IF l_count > 0 THEN
+        SELECT
+          l.id
+        INTO
+          l_rec.TABK
+        FROM
+          user_list ul,
+          labouring_list l
+        WHERE
+            ul.code = p_modify_user
+          AND
+            l.code = ul.labouring;
+
+      END IF;
+
+    END IF;
+
+
+    SELECT
+      *
+    INTO
+      l_koRow
+    FROM
+      konstrobj
+    WHERE
+        unvCode = l_currentRevision.docCode;
+
+    /* наименование */
+    l_rec.NAIMD := SubStr(l_koRow.name, 1, Least(Length(l_koRow.name), 150));
+
+
+    IF l_currentRevision.TYPE IN (1, 2, 5, 22) THEN
+      -- обозначение ревизии
+      l_rec.NIZM := SubStr(l_currentRevision.revSign, 1, Least(Length(l_currentRevision.revSign), 10));
+
+      -- децимальный номер
+      -- разбиваетс€ на 3 значени€
+      l_rec.CHNDN := SubStr(l_koRow.Sign, 1, Least(Length(l_koRow.Sign), 35));
+      l_rec.OKON := SubStr(l_koRow.Sign, 36, Least(Length(l_koRow.Sign) - 35, 5));
+      l_rec.DOP := SubStr(l_koRow.Sign, 41, Least(Length(l_koRow.Sign) - 40, 255));
+
+    END IF;
+
+    /* тип ƒ—≈ —Ёѕќ */
+    IF l_currentRevision.TYPE IN (1, 2, 3, 5, 22) THEN
+      SELECT id INTO l_rec.TPDCE FROM sepo_ko_types
+      WHERE
+          id_bo_type = l_currentRevision.TYPE;
+
+    END IF;
+
+    /* получить список атрибутов на материал */
+    GetAttrs(l_currentRevision.TYPE);
+
+    IF l_currentRevision.TYPE = 1 THEN
+      SELECT
+        firstApply
+      INTO
+        l_rec.PVH
+      FROM
+        spcList
+      WHERE
+          code = l_currentRevision.docCode;
+
+      l_query :=
+        'SELECT ' ||
+--          'A_' || GetAttrCode('TPDCE') || ' as TPDCE,' ||
+--          'A_' || GetAttrCode('NAIMD') || ' as NAIMD,' ||
+--          'A_' || GetAttrCode('CHNDN') || ' as CHNDN,' ||
+          'A_' || GetAttrCode('IZD') || ' as IZD,' ||
+--          'A_' || GetAttrCode('OKON') || ' as OKON,' ||
+          'A_' || GetAttrCode('DCE') || ' as DCE ' ||
+        'FROM ' ||
+          'obj_attr_values_1 attr_1 ' ||
+        'WHERE ' ||
+            'attr_1.soCode = :1';
+
+      EXECUTE IMMEDIATE l_query
+      INTO
+--        l_rec.TPDCE,
+--        l_rec.NAIMD,
+--        l_rec.CHNDN,
+        l_rec.IZD,
+--        l_rec.OKON,
+        l_rec.DCE
+      USING
+        p_bocode;
+
+    ELSIF l_currentRevision.TYPE = 2 THEN
+      SELECT
+        firstApply
+      INTO
+        l_rec.PVH
+      FROM
+        details
+      WHERE
+          code = l_currentRevision.docCode;
+
+      l_query :=
+        'SELECT ' ||
+--          'A_' || GetAttrCode('TPDCE') || ' as TPDCE,' ||
+--          'A_' || GetAttrCode('NAIMD') || ' as NAIMD,' ||
+--          'A_' || GetAttrCode('CHNDN') || ' as CHNDN,' ||
+          'A_' || GetAttrCode('IZD') || ' as IZD,' ||
+--          'A_' || GetAttrCode('OKON') || ' as OKON,' ||
+          'A_' || GetAttrCode('DCE') || ' as DCE ' ||
+        'FROM ' ||
+          'obj_attr_values_2 attr_2 ' ||
+        'WHERE ' ||
+            'attr_2.soCode = :1';
+
+      EXECUTE IMMEDIATE l_query
+      INTO
+--        l_rec.TPDCE,
+--        l_rec.NAIMD,
+--        l_rec.CHNDN,
+        l_rec.IZD,
+--        l_rec.OKON,
+        l_rec.DCE
+      USING
+        p_bocode;
+
+    ELSIF l_currentRevision.TYPE = 3 THEN
+      -- обозначение
+      l_rec.DCE := l_startRevision.name;
+
+      /* выборка значений из атрибутов */
+      l_query :=
+        'SELECT ' ||
+--          'A_' || GetAttrCode('TPDCE') || ' as TPDCE,' ||
+--          'A_' || GetAttrCode('NAIMD') || ' as NAIMD,' ||
+          'A_' || GetAttrCode('CHNDN') || ' as CHNDN,' ||
+          'A_' || GetAttrCode('OKON') || ' as OKON,' ||
+          'A_' || GetAttrCode('IZD') || ' as IZD ' ||
+        'FROM ' ||
+          'obj_attr_values_3 attr_3 ' ||
+        'WHERE ' ||
+            'attr_3.soCode = :1';
+
+      EXECUTE IMMEDIATE l_query
+      INTO
+--        l_rec.TPDCE,
+--        l_rec.NAIMD,
+        l_rec.CHNDN,
+        l_rec.OKON,
+        l_rec.IZD
+      USING
+        p_bocode;
+
+    ELSIF l_currentRevision.TYPE = 5 THEN
+      /* выборка значений из атрибутов */
+      l_query :=
+        'SELECT ' ||
+--          'A_' || GetAttrCode('TPDCE') || ' as TPDCE,' ||
+--          'A_' || GetAttrCode('NAIMD') || ' as NAIMD,' ||
+--          'A_' || GetAttrCode('CHNDN') || ' as CHNDN,' ||
+--          'A_' || GetAttrCode('OKON') || ' as OKON,' ||
+          'A_' || GetAttrCode('IZD') || ' as IZD,' ||
+          'A_' || GetAttrCode('DCE') || ' as DCE ' ||
+        'FROM ' ||
+          'obj_attr_values_5 attr_5 ' ||
+        'WHERE ' ||
+            'attr_5.soCode = :1';
+
+      EXECUTE IMMEDIATE l_query
+      INTO
+--        l_rec.TPDCE,
+--        l_rec.NAIMD,
+--        l_rec.CHNDN,
+--        l_rec.OKON,
+        l_rec.IZD,
+        l_rec.DCE
+      USING
+        p_bocode;
+
+    ELSIF l_currentRevision.TYPE = 22 THEN
+      SELECT
+        firstApply
+      INTO
+        l_rec.PVH
+      FROM
+        spcList
+      WHERE
+          code = l_currentRevision.docCode;
+
+      /* выборка значений из атрибутов */
+      l_query :=
+        'SELECT ' ||
+--          'A_' || GetAttrCode('TPDCE') || ' as TPDCE,' ||
+--          'A_' || GetAttrCode('NAIMD') || ' as NAIMD,' ||
+--          'A_' || GetAttrCode('CHNDN') || ' as CHNDN,' ||
+--          'A_' || GetAttrCode('OKON') || ' as OKON,' ||
+          'A_' || GetAttrCode('IZD') || ' as IZD,' ||
+          'A_' || GetAttrCode('DCE') || ' as DCE ' ||
+        'FROM ' ||
+          'obj_attr_values_22 attr_22 ' ||
+        'WHERE ' ||
+            'attr_22.soCode = :1';
+
+      EXECUTE IMMEDIATE l_query
+      INTO
+--        l_rec.TPDCE,
+--        l_rec.NAIMD,
+--        l_rec.CHNDN,
+--        l_rec.OKON,
+        l_rec.IZD,
+        l_rec.DCE
+      USING
+        p_bocode;
+
+    END IF;
+
+    /* добавление полученных данных */
+    INSERT INTO sepo_export_dce
+    VALUES
+    l_rec;
+
+  END;
+
+END;
+/

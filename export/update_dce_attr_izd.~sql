@@ -1,0 +1,10 @@
+BEGIN
+  IF pkg_sepo_export_settings.isUpdateDCEAttrIZD THEN
+    EXEC pkg_sepo_konstrobj.UpdateImportIZD(1);
+    EXEC pkg_sepo_konstrobj.UpdateImportIZD(2);
+    EXEC pkg_sepo_konstrobj.UpdateImportIZD(22);
+
+  END IF;
+
+END;
+

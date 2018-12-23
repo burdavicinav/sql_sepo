@@ -1,0 +1,1 @@
+ALTER TABLE sepo_export_dce MODIFY "NIZM" VARCHAR2(10);

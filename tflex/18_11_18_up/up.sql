@@ -1,0 +1,1 @@
+GRANT SELECT ON omp_adm.kotype_to_botype TO tflex_user
