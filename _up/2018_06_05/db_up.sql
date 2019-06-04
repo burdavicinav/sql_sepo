@@ -672,7 +672,7 @@ CREATE GLOBAL TEMPORARY TABLE sepo_std_schemes_temp (
   omp_name VARCHAR2(100)
 ) ON COMMIT PRESERVE ROWS;
 
-DROP TABLE sepo_std_schemes_temp
+DROP TABLE sepo_std_schemes_temp;
 
 CREATE OR REPLACE VIEW v_sepo_std_attr_properties
 AS

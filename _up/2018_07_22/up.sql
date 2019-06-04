@@ -14,6 +14,7 @@ DECLARE
   l_tblkey_33 NUMBER;
   l_reckey_33 NUMBER;
   l_vo_33 NUMBER;
+  l_sql VARCHAR2(2000);
 BEGIN
   l_table_31 := pkg_sepo_attr_operations.getcode(31, 'Table');
   l_tblkey_31 := pkg_sepo_attr_operations.getcode(31, 'TBLKey');
@@ -32,7 +33,8 @@ BEGIN
   l_reckey_33 := pkg_sepo_attr_operations.getcode(33, 'RecKey');
   l_vo_33 := pkg_sepo_attr_operations.getcode(33, 'н_бн');
 
-  EXECUTE IMMEDIATE
+
+  l_sql :=
   'create or replace view v_sepo_fixture_attrs as ' ||
   'select socode, objtype, table_, tblkey, reckey, o_vo, art_id ' ||
   'from (select ' ||
@@ -66,6 +68,9 @@ BEGIN
     'obj_attr_values_33),' ||
   'omp_objects ' ||
   'where code = socode';
+
+  Dbms_Output.put_line(l_sql);
+  EXECUTE IMMEDIATE l_sql;
 
 END;
 /
